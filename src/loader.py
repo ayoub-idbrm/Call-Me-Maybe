@@ -9,13 +9,13 @@ from typing import Any
 def load_prompt():
     # with prompt.open('r', encoding='utf-8') as f:
     #     return json.load(f)
-    with open ("data/input/function_calling_tests.json", "r") as f:
+    with open ("../data/input/function_calling_tests.json", "r") as f:
         data = json.load(f)
         return data
 
 
 def load_funct():
-    with open ("data/input/functions_definition.json", "r") as d:
+    with open ("../data/input/functions_definition.json", "r") as d:
         data = json.load(d)
         return data
 
