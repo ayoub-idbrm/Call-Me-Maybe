@@ -20,11 +20,11 @@ def load_funct():
         return data
 
 
-def main():
-    test = load_prompt()
-    print(test)
-    # test2 = load_funct()
-    # print(test2)
+# def main():
+#     test = load_prompt()
+#     print(test)
+#     # test2 = load_funct()
+#     # print(test2)
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

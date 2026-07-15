@@ -1,5 +1,6 @@
 from loader import load_prompt, load_funct
 from pydantic import BaseModel, Field
+from pathlib import Path
 import sys
 import json
 import re
@@ -15,9 +16,9 @@ class Parsing(BaseModel):
     #     with prompt.open('r', encoding='utf-8') as f:
     #         return json.load(f)
 
-
-    def valid_prompt(self):
-        with open("data/input/function_calling_tests.json") as f:
+    @staticmethod
+    def valid_prompt(path):
+        with open(path) as f:
             prompts = json.load(f)
 
         if not isinstance(prompts, list):
@@ -55,9 +56,9 @@ class Parsing(BaseModel):
         return prompts
 
 
-    def valid_function_def(self):
+    def valid_function_def(self, path):
 
-        with open("data/input/functions_definition.json", 'r') as z:
+        with open(path, 'r') as z:
             data = json.load(z)
         
         if not isinstance(data, list):
@@ -114,6 +115,20 @@ class Parsing(BaseModel):
             if not isinstance(da["returns"], dict):
                 print(f"ERROR: the returns key should \
                     be dict not '{type(da["returns"]).__name__}'")
+        return data
+
+
+
+    def set_id(self) -> list[dict]:
+        path = Path("data/input/functions_definition.json")
+        data = self.valid_function_def(path)
+
+        i = 0
+        for iteam in data:
+            iteam["id"] = i
+            i += 1
+
+        return data 
 
 
 
@@ -121,10 +136,9 @@ class Parsing(BaseModel):
 
 
 
-def main():
-    test = Parsing()
-    test.valid_function_def()
-    # print(test1)
+# def main():
+#     test = Parsing()
+#     test.set_id()
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
