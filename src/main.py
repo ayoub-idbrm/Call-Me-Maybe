@@ -39,16 +39,40 @@ class LLM(BaseModel):
 
         return arr
 
-    def cons_dec(self,arr : list):
 
-        numb = self.model.encode("0123456789-@").squeeze().tolist()
+    def cons_dec(self,arr : list):
+        numb = self.model.encode("01234-").squeeze().tolist()
         for i in range(len(arr)):
             if i not in numb:
                 arr[i] = -inf
+        return  arr
 
+
+    def cons_param(self,arr : list):
+
+        numb = self.model.encode("-0123456789,").squeeze().tolist()
+        for i in range(len(arr)):
+            if i not in numb:
+                arr[i] = -inf
         return arr
 
-    def create_prompt(self,prompt_path, func_path):
+
+    def extractparam(self, prompt):
+            buff = self.model.encode(prompt).squeeze().tolist()
+            leen = len(buff)
+            stop = self.model.encode(",").squeeze().tolist()
+
+            for _ in range(10):
+                logits = self.model.get_logits_from_input_ids(buff)
+                logits = self.cons_param(logits)
+                token = argmax(logits)
+                buff.append(argmax(logits))
+
+                if token == stop:
+                    break
+            return buff[leen:]
+
+    def processing(self,prompt_path, func_path):
         prompts = Parsing.valid_prompt(prompt_path)
         pars = Parsing()
         data = pars.set_id()
@@ -103,10 +127,10 @@ class LLM(BaseModel):
             # print(model.decode(buffer[lenght:]))
             try:
                 n = int(self.model.decode(n))
+                print(n)
             except BaseException:
                 print("function not found")
                 sys.exit(1)
-
             parameter = self.set_param(data[n])
             param_prompt = f"""You are a parameter extraction model.
 
@@ -130,10 +154,8 @@ class LLM(BaseModel):
                             9. If a required parameter cannot be found, output MISSING.
                             10. If there are multiple values of the same type, choose the ones that belong to the user's request.
                             11. Output each parameter as parameter_name:value.
-                            12. Separate parameters with a comma.
-                            13. The last token of your output MUST be >>>>>>>>.
-                            14. Stop generating immediately after >>>>>>>>.
-                            15. Do not output anything after >>>>>>>>.
+                            12. Separate consecutive parameters with ",\n".
+                            13. Do not output anything except the extracted parameters.
 
                             Examples
 
@@ -148,7 +170,8 @@ class LLM(BaseModel):
                             What is the sum of 23 and 91?
 
                             Output:
-                            a:23,b:91>>>>>>>>
+                            a:23,
+                            b:91
 
                             Function:
                             fn_greet
@@ -160,7 +183,7 @@ class LLM(BaseModel):
                             Greet John
 
                             Output:
-                            name:John>>>>>>>>
+                            name:John
 
                             Function:
                             fn_reverse_string
@@ -172,7 +195,7 @@ class LLM(BaseModel):
                             Reverse the string "hello"
 
                             Output:
-                            s:hello>>>>>>>>
+                            s:hello
 
                             Function:
                             fn_get_square_root
@@ -184,7 +207,7 @@ class LLM(BaseModel):
                             Square root of 144
 
                             Output:
-                            a:144>>>>>>>>
+                            a:144
 
                             Function:
                             fn_substitute_string_with_regex
@@ -198,31 +221,37 @@ class LLM(BaseModel):
                             Replace all numbers in "Hello 34 I'm 233 years old" with NUMBERS
 
                             Output:
-                            source_string:Hello 34 I'm 233 years old,regex:[0-9]+,replacement:NUMBERS>>>>>>>>
+                            source_string:Hello 34 I'm 233 years old,
+                            regex:[0-9]+,
+                            replacement:NUMBERS
 
                             User:
                             {prompt}
 
-                            Output :
+                            Output: a: 
                             """
+            strr = param_prompt
             buff = []
             buff = self.model.encode(param_prompt).squeeze().tolist()
             # buff.extend(buff).squeeze().tolist()
             leen = len(buff)
-            stop = self.model.encode(">>>>>>>>").squeeze().tolist()
+            stop = self.model.encode(",\n").squeeze().tolist()
 
-            for _ in range(10):
-                logits = self.model.get_logits_from_input_ids(buff)
-                # logits = self.cons_dec(logits)
-                token = argmax(logits)
-                
 
-                buff.append(token)
+            lenght_prom = len(param_prompt)
 
-                if int(token) == stop:
-                    break
+            i = 0
+            extracted = ""
+            for _ in range(len(parameter)):
+                new = self.extractparam(param_prompt)
+                n = self.model.decode(new)
+                param_prompt += f"{n}, {parameter[i]}:"   # actually accumulate
+                extracted += f"{parameter[i]}:{n} "
+                i += 1
 
-            print(self.model.decode(buff[leen:]))
+            print(extracted.strip())          
+            # print(param_prompt[len(strr):])
+            
             
 
 
@@ -231,6 +260,6 @@ class LLM(BaseModel):
 
 # try :
 p = LLM()
-test = p.create_prompt(prompt, func)
+test = p.processing(prompt, func)
 # except BaseException as e:
 #     print("error",e)
