@@ -29,9 +29,19 @@ class LLM(BaseModel):
         return n
 
 
+    def str_cons_dec(self,arr : list):
+        allowed = "abcdefghijklmnopqrstuvwxyz"
+
+        numb = self.model.encode(allowed).squeeze().tolist()
+        for i in range(len(arr)):
+            if i not in numb:
+                arr[i] = -inf
+
+        return arr
+
     def cons_dec(self,arr : list):
 
-        numb = self.model.encode("0123456789-").squeeze().tolist()
+        numb = self.model.encode("0123456789-@").squeeze().tolist()
         for i in range(len(arr)):
             if i not in numb:
                 arr[i] = -inf
@@ -98,80 +108,121 @@ class LLM(BaseModel):
                 sys.exit(1)
 
             parameter = self.set_param(data[n])
-            param_prompt = f"""
-                        You are a parameter extraction model.
-                        Your only task is to extract the parameters for the selected function.
-                        Selected function:
-                        {data[n]["name"]}
-                        Required parameters:
-                        {data[n]["parameters"]}
-                        Rules:
-                        1. Extract ONLY the required parameters.
-                        2. Do NOT answer the user's question.
-                        3. Do NOT explain anything.
-                        4. Do NOT invent missing values.
-                        5. Keep the original value exactly as written whenever possible.
-                        6. Numbers must be numbers.
-                        7. Strings must be strings without changing their content.
-                        8. Output the parameters in the same order as the function definition.
-                        9. If a required parameter cannot be found, output MISSING.
-                        10. If there are multiple values of the same type, choose the ones that belong to the user's request.
-                        Examples
-                        Function:
-                        fn_add_numbers
-                        Parameters:
-                        a:number
-                        b:number
-                        User:
-                        What is the sum of 23 and 91?
-                        Output:
-                        23
-                        91
-                        Function:
-                        fn_greet
-                        Parameters:
-                        name:string
-                        User:
-                        Greet John
-                        Output:
-                        John
-                        Function:
-                        fn_reverse_string
-                        Parameters:
-                        s:string
-                        User:
-                        Reverse the string "hello"
-                        Output:
-                        hello
-                        Function:
-                        fn_get_square_root
-                        Parameters:
-                        a:number
-                        User:
-                        Square root of 144
-                        Output:
-                        144
-                        Function:
-                        fn_substitute_string_with_regex
-                        Parameters:
-                        source_string:string
-                        regex:string
-                        replacement:string
-                        User:
-                        Replace all numbers in "Hello 34 I'm 233 years old" with NUMBERS
-                        Output:
-                        Hello 34 I'm 233 years old
-                        [0-9]+
-                        NUMBERS
-                        User:
-                        {prompt}
-                        Output:
-                    """
-            buff = self.model.encode(param_prompt)
-            buff.extend(buff)
-            leen = len(buff)
+            param_prompt = f"""You are a parameter extraction model.
 
-            log = self.model.get_logits_from_input_ids(buff)
+                            Your only task is to extract the parameters for the selected function.
+
+                            Selected function:
+                            {data[n]["name"]}
+
+                            Required parameters:
+                            {data[n]["parameters"]}
+
+                            Rules:
+                            1. Extract ONLY the required parameters.
+                            2. Do NOT answer the user's question.
+                            3. Do NOT explain anything.
+                            4. Do NOT invent missing values.
+                            5. Keep the original value exactly as written whenever possible.
+                            6. Numbers must be numbers.
+                            7. Strings must be strings without changing their content.
+                            8. Output the parameters in the same order as the function definition.
+                            9. If a required parameter cannot be found, output MISSING.
+                            10. If there are multiple values of the same type, choose the ones that belong to the user's request.
+                            11. Output each parameter as parameter_name:value.
+                            12. Separate parameters with a comma.
+                            13. The last token of your output MUST be >>>>>>>>.
+                            14. Stop generating immediately after >>>>>>>>.
+                            15. Do not output anything after >>>>>>>>.
+
+                            Examples
+
+                            Function:
+                            fn_add_numbers
+
+                            Parameters:
+                            a:number
+                            b:number
+
+                            User:
+                            What is the sum of 23 and 91?
+
+                            Output:
+                            a:23,b:91>>>>>>>>
+
+                            Function:
+                            fn_greet
+
+                            Parameters:
+                            name:string
+
+                            User:
+                            Greet John
+
+                            Output:
+                            name:John>>>>>>>>
+
+                            Function:
+                            fn_reverse_string
+
+                            Parameters:
+                            s:string
+
+                            User:
+                            Reverse the string "hello"
+
+                            Output:
+                            s:hello>>>>>>>>
+
+                            Function:
+                            fn_get_square_root
+
+                            Parameters:
+                            a:number
+
+                            User:
+                            Square root of 144
+
+                            Output:
+                            a:144>>>>>>>>
+
+                            Function:
+                            fn_substitute_string_with_regex
+
+                            Parameters:
+                            source_string:string
+                            regex:string
+                            replacement:string
+
+                            User:
+                            Replace all numbers in "Hello 34 I'm 233 years old" with NUMBERS
+
+                            Output:
+                            source_string:Hello 34 I'm 233 years old,regex:[0-9]+,replacement:NUMBERS>>>>>>>>
+
+                            User:
+                            {prompt}
+
+                            Output :
+                            """
+            buff = []
+            buff = self.model.encode(param_prompt).squeeze().tolist()
+            # buff.extend(buff).squeeze().tolist()
+            leen = len(buff)
+            stop = self.model.encode(">>>>>>>>").squeeze().tolist()
+
+            for _ in range(10):
+                logits = self.model.get_logits_from_input_ids(buff)
+                # logits = self.cons_dec(logits)
+                token = argmax(logits)
+                
+
+                buff.append(token)
+
+                if int(token) == stop:
+                    break
+
+            print(self.model.decode(buff[leen:]))
             
 
 
