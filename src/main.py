@@ -41,7 +41,7 @@ class LLM(BaseModel):
 
 
     def cons_dec(self,arr : list):
-        numb = self.model.encode("01234-").squeeze().tolist()
+        numb = self.model.encode("-0123456789").squeeze().tolist()
         for i in range(len(arr)):
             if i not in numb:
                 arr[i] = -inf
@@ -77,45 +77,33 @@ class LLM(BaseModel):
         pars = Parsing()
         data = pars.set_id()
 
+        function_list = "\n".join(
+            f"{i}: {d['name']} - takes parameters: {list(d['parameters'].keys())}"
+            for i, d in enumerate(data)
+        )
+
         general_prompt = (
-            "you are a function name id selecter "
-                "you will seletect a function name depending in user "
-                "txt the only way you must do to select "
-                "the function name it's by checking name and "
-                "description and parameters of the function "
-                "to see if it match the user txt, the parameters"
-                "of the function must match the one in the "
-                f"prompt in number and type here's where the function name"
-                f"and the description and parameters store {data}"
-                "when you check parameter in the user txt when selected"
-                "function if no match found or number of parameters or "
-                "types doesn't match output=-7,"
-                "example of no match in parameters user txt = "
-                "what is the sum of 0? output=-7, here ft_add_number"
-                "takes 2 parameters not 1,"
-                "example of no match in paramaters user txt = "
-                "what is the sum of a? output=-7 here ft_add_number"
-                "takers numbers not characters,"
-                "or the user txt match a function but the parameters in"
-                "user txt isn't enough like function take 2 numbers and in user"
-                "txt has only one, output=-7"
-                "for the given function and user txt has different type like"
-                "string instead of number must output=-7."
-                "here's a valid example of user txt = what the sum of 33 and "
-                "4660? output=0,"
-                "example user txt = what is the square root of 1662?"
-                "output=3"
-                "example user txt = Reverse the string 'world' output=2,"
-                "example user txt = Greet shrek output=1, "
-                'example user txt = Replace all numbers in "Hello 34 I\'m 233 '
-                'years old" with NUMBERS output=4, '
-                f"user txt = "
-            )
+            "You are a function selector. Read the user text and pick the number "
+            "of the function that matches it.\n\n"
+            "Here are the available functions:\n"
+            f"{function_list}\n\n"
+            "Rules:\n"
+            "- If no function matches, or the number of parameters or their type "
+            "does not match, output -7.\n\n"
+            "Examples:\n"
+            "user txt = what is the sum of 33 and 4660? output=0\n"
+            "user txt = what is the square root of 1662? output=3\n"
+            "user txt = Reverse the string 'world' output=2\n"
+            "user txt = Greet shrek output=1\n"
+            "user txt = what is the sum of 0? output=-7\n"
+            "user txt = what is the sum of a? output=-7\n\n"
+            "user txt = "
+        )
         enc_gen = self.model.encode(general_prompt).squeeze().tolist()
 
 
         for prompt in prompts:  
-            buffer = enc_gen
+            buffer = list(enc_gen)
             buffer.extend(self.model.encode(f"{prompt} output=").squeeze().tolist())
             lenght = len(buffer)
 
@@ -131,105 +119,206 @@ class LLM(BaseModel):
             except BaseException:
                 print("function not found")
                 sys.exit(1)
+            if n < 0 or n >= len(data):
+                print("no matching function found")
+                continue 
             parameter = self.set_param(data[n])
             param_prompt = f"""You are a parameter extraction model.
 
-                            Your only task is to extract the parameters for the selected function.
+                    Your only task is to extract the parameters for the selected function.
 
-                            Selected function:
-                            {data[n]["name"]}
+                    Selected function:
+                    {data[n]["name"]}
 
-                            Required parameters:
-                            {data[n]["parameters"]}
+                    Required parameters:
+                    {data[n]["parameters"]}
 
-                            Rules:
-                            1. Extract ONLY the required parameters.
-                            2. Do NOT answer the user's question.
-                            3. Do NOT explain anything.
-                            4. Do NOT invent missing values.
-                            5. Keep the original value exactly as written whenever possible.
-                            6. Numbers must be numbers.
-                            7. Strings must be strings without changing their content.
-                            8. Output the parameters in the same order as the function definition.
-                            9. If a required parameter cannot be found, output MISSING.
-                            10. If there are multiple values of the same type, choose the ones that belong to the user's request.
-                            11. Output each parameter as parameter_name:value.
-                            12. Separate consecutive parameters with ",\n".
-                            13. Do not output anything except the extracted parameters.
+                    Rules:
+                    1. Extract ONLY the required parameters.
+                    2. Do NOT answer the user's question.
+                    3. Do NOT explain anything.
+                    4. Do NOT invent missing values.
+                    5. Keep the original value exactly as written whenever possible.
+                    6. Numbers must be numbers (integers or decimals).
+                    7. Strings must be strings without changing their content.
+                    8. Output the parameters in the same order as the function definition.
+                    9. If a required parameter cannot be found, output MISSING.
+                    10. If there are multiple values of the same type, choose the ones that belong to the user's request.
+                    11. Output each parameter as parameter_name:value.
+                    12. Separate consecutive parameters with ",\n".
+                    13. Do not output anything except the extracted parameters.
+                    14. Strip surrounding quotes (single or double) from string values, keep the inner content exactly as written.
+                    15. Decimal numbers must keep their decimal point (e.g. 2.45, not 2 or 245).
 
-                            Examples
+                    Examples
 
-                            Function:
-                            fn_add_numbers
+                    Function:
+                    fn_add_numbers
 
-                            Parameters:
-                            a:number
-                            b:number
+                    Parameters:
+                    a:number
+                    b:number
 
-                            User:
-                            What is the sum of 23 and 91?
+                    User:
+                    What is the sum of 23 and 91?
 
-                            Output:
-                            a:23,
-                            b:91
+                    Output:
+                    a:23,
+                    b:91
 
-                            Function:
-                            fn_greet
+                    Function:
+                    fn_add_numbers
 
-                            Parameters:
-                            name:string
+                    Parameters:
+                    a:number
+                    b:number
 
-                            User:
-                            Greet John
+                    User:
+                    What is the sum of 2.45 and 3?
 
-                            Output:
-                            name:John
+                    Output:
+                    a:2.45,
+                    b:3
 
-                            Function:
-                            fn_reverse_string
+                    Function:
+                    fn_add_numbers
 
-                            Parameters:
-                            s:string
+                    Parameters:
+                    a:number
+                    b:number
 
-                            User:
-                            Reverse the string "hello"
+                    User:
+                    What is the sum of 265 and 345?
 
-                            Output:
-                            s:hello
+                    Output:
+                    a:265,
+                    b:345
 
-                            Function:
-                            fn_get_square_root
+                    Function:
+                    fn_greet
 
-                            Parameters:
-                            a:number
+                    Parameters:
+                    name:string
 
-                            User:
-                            Square root of 144
+                    User:
+                    Greet John
 
-                            Output:
-                            a:144
+                    Output:
+                    name:John
 
-                            Function:
-                            fn_substitute_string_with_regex
+                    Function:
+                    fn_greet
 
-                            Parameters:
-                            source_string:string
-                            regex:string
-                            replacement:string
+                    Parameters:
+                    name:string
 
-                            User:
-                            Replace all numbers in "Hello 34 I'm 233 years old" with NUMBERS
+                    User:
+                    Greet shrek
 
-                            Output:
-                            source_string:Hello 34 I'm 233 years old,
-                            regex:[0-9]+,
-                            replacement:NUMBERS
+                    Output:
+                    name:shrek
 
-                            User:
-                            {prompt}
+                    Function:
+                    fn_reverse_string
 
-                            Output: a: 
-                            """
+                    Parameters:
+                    s:string
+
+                    User:
+                    Reverse the string "hello"
+
+                    Output:
+                    s:hello
+
+                    Function:
+                    fn_reverse_string
+
+                    Parameters:
+                    s:string
+
+                    User:
+                    Reverse the string 'world'
+
+                    Output:
+                    s:world
+
+                    Function:
+                    fn_get_square_root
+
+                    Parameters:
+                    a:number
+
+                    User:
+                    Square root of 144
+
+                    Output:
+                    a:144
+
+                    Function:
+                    fn_get_square_root
+
+                    Parameters:
+                    a:number
+
+                    User:
+                    What is the square root of 16?
+
+                    Output:
+                    a:16
+
+                    Function:
+                    fn_substitute_string_with_regex
+
+                    Parameters:
+                    source_string:string
+                    regex:string
+                    replacement:string
+
+                    User:
+                    Replace all numbers in "Hello 34 I'm 233 years old" with NUMBERS
+
+                    Output:
+                    source_string:Hello 34 I'm 233 years old,
+                    regex:[0-9]+,
+                    replacement:NUMBERS
+
+                    Function:
+                    fn_substitute_string_with_regex
+
+                    Parameters:
+                    source_string:string
+                    regex:string
+                    replacement:string
+
+                    User:
+                    Replace all vowels in 'Programming is fun' with asterisks
+
+                    Output:
+                    source_string:Programming is fun,
+                    regex:[aeiouAEIOU]+,
+                    replacement:asterisks
+
+                    Function:
+                    fn_substitute_string_with_regex
+
+                    Parameters:
+                    source_string:string
+                    regex:string
+                    replacement:string
+
+                    User:
+                    Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat'
+
+                    Output:
+                    source_string:The cat sat on the mat with another cat,
+                    regex:cat,
+                    replacement:dog
+
+                    User:
+                    {prompt}
+
+                    Output: a: 
+                    """
             strr = param_prompt
             buff = []
             buff = self.model.encode(param_prompt).squeeze().tolist()
