@@ -5,7 +5,9 @@ from parsing import Parsing
 from numpy import array, argmax
 from math import inf
 import sys
+import time
 
+start_time = time.process_time()
 
 
 prompt = Path("data/input/function_calling_tests.json")
@@ -17,54 +19,78 @@ class LLM(BaseModel):
     model: Small_LLM_Model = Small_LLM_Model()
 
     def set_param(self,param: dict):
-        keys = param["parameters"]
-        lst = []
-        n = []
-        for key in keys:
-            tmp = key
-            enc = self.model.encode(key)
-            lst.append(enc)
-        for i in lst:
-            n.extend(self.model.decode(i))
-        return n
+        # keys = param["parameters"]
+        # lst = []
+        # n = []
+        # for key in keys:
+        #     tmp = key
+        #     enc = self.model.encode(key)
+        #     lst.append(enc)
+        # for i in lst:
+        #     n.extend(self.model.decode(i))
+        # return n
+        return list(param["parameters"].items())
 
 
-    def str_cons_dec(self,arr : list):
-        allowed = "abcdefghijklmnopqrstuvwxyz"
 
-        numb = self.model.encode(allowed).squeeze().tolist()
-        for i in range(len(arr)):
-            if i not in numb:
-                arr[i] = -inf
-
-        return arr
-
-
-    def cons_dec(self,arr : list):
-        numb = self.model.encode("-0123456789").squeeze().tolist()
-        for i in range(len(arr)):
-            if i not in numb:
-                arr[i] = -inf
-        return  arr
-
-
-    def cons_param(self,arr : list):
-
-        numb = self.model.encode("-0123456789,").squeeze().tolist()
+    def cons_dec(self, arr: list):
+        numb = set()
+        for ch in "-0123456789":
+            ids = self.model.encode(ch).squeeze().tolist()
+            if isinstance(ids, int):
+                numb.add(ids)
+            else:
+                numb.update(ids)
         for i in range(len(arr)):
             if i not in numb:
                 arr[i] = -inf
         return arr
 
+    def cons_param_str(self, arr: list):
+        allowed_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,'\"!?-_"
+        numb = set()
+        for ch in allowed_chars:
+            ids = self.model.encode(ch).squeeze().tolist()
+            if isinstance(ids, int):
+                numb.add(ids)
+            else:
+                numb.update(ids)
 
-    def extractparam(self, prompt):
+        for i in range(len(arr)):
+            if i not in numb:
+                arr[i] = -inf
+        return arr
+
+    def cons_param(self, arr: list):
+        numb = set()
+        for ch in "-0123456789,.":
+            ids = self.model.encode(ch).squeeze().tolist()
+            if isinstance(ids, int):
+                numb.add(ids)
+            else:
+                numb.update(ids)
+        for i in range(len(arr)):
+            if i not in numb:
+                arr[i] = -inf
+        return arr
+
+
+    def extractparam(self, prompt, param_type="number"):
             buff = self.model.encode(prompt).squeeze().tolist()
             leen = len(buff)
             stop = self.model.encode(",").squeeze().tolist()
 
-            for _ in range(10):
+            if isinstance(stop, list):
+                stop = stop[0]
+
+            for _ in range(20):
                 logits = self.model.get_logits_from_input_ids(buff)
-                logits = self.cons_param(logits)
+
+                if param_type == "string":
+                    logits = self.cons_param_str(logits)
+                else:
+                    logits = self.cons_param(logits)
+
                 token = argmax(logits)
                 buff.append(argmax(logits))
 
@@ -76,6 +102,8 @@ class LLM(BaseModel):
         prompts = Parsing.valid_prompt(prompt_path)
         pars = Parsing()
         data = pars.set_id()
+
+
 
         function_list = "\n".join(
             f"{i}: {d['name']} - takes parameters: {list(d['parameters'].keys())}"
@@ -331,14 +359,20 @@ class LLM(BaseModel):
 
             i = 0
             extracted = ""
-            for _ in range(len(parameter)):
-                new = self.extractparam(param_prompt)
-                n = self.model.decode(new)
-                param_prompt += f"{n}, {parameter[i]}:"   # actually accumulate
-                extracted += f"{parameter[i]}:{n} "
-                i += 1
-
-            print(extracted.strip())          
+            for p_name, p_info in parameter:
+                p_type = p_info["type"]
+                if p_name == "name":
+                    buff = self.model.encode(param_prompt).squeeze().tolist()
+                    logits = self.model.get_logits_from_input_ids(buff)
+                    logits = self.cons_param_str(logits)
+                    top5_idx = sorted(range(len(logits)), key=lambda i: logits[i], reverse=True)[:5]
+                    for idx in top5_idx:
+                        print(idx, repr(self.model.decode(idx)), logits[idx])
+                new = self.extractparam(param_prompt, p_type)
+                val = self.model.decode(new)
+                param_prompt += f"{val} {p_name}:"
+                extracted += f"{p_name}:{val} "
+            print(f"prompt: {extracted.strip()}")     
             # print(param_prompt[len(strr):])
             
             
@@ -350,5 +384,8 @@ class LLM(BaseModel):
 # try :
 p = LLM()
 test = p.processing(prompt, func)
+end_time = time.process_time()
+cpu_time = end_time - start_time
+print(f"CPU time: {cpu_time} seconds")
 # except BaseException as e:
 #     print("error",e)
