@@ -47,7 +47,7 @@ class LLM(BaseModel):
         return arr
 
     def cons_param_str(self, arr: list):
-        allowed_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,'\"!?-_"
+        allowed_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ .,'\"!?-_"
         numb = set()
         for ch in allowed_chars:
             ids = self.model.encode(ch).squeeze().tolist()
@@ -151,7 +151,10 @@ class LLM(BaseModel):
                 print("no matching function found")
                 continue 
             parameter = self.set_param(data[n])
-            param_prompt = f"""You are a parameter extraction model.
+            is_str_func = parameter[0][1]["type"] == "string"
+
+            if is_str_func:
+                param_prompt = f"""You are a parameter extraction model.
 
                     Your only task is to extract the parameters for the selected function.
 
@@ -167,60 +170,16 @@ class LLM(BaseModel):
                     3. Do NOT explain anything.
                     4. Do NOT invent missing values.
                     5. Keep the original value exactly as written whenever possible.
-                    6. Numbers must be numbers (integers or decimals).
-                    7. Strings must be strings without changing their content.
-                    8. Output the parameters in the same order as the function definition.
-                    9. If a required parameter cannot be found, output MISSING.
-                    10. If there are multiple values of the same type, choose the ones that belong to the user's request.
-                    11. Output each parameter as parameter_name:value.
-                    12. Separate consecutive parameters with ",\n".
-                    13. Do not output anything except the extracted parameters.
-                    14. Strip surrounding quotes (single or double) from string values, keep the inner content exactly as written.
-                    15. Decimal numbers must keep their decimal point (e.g. 2.45, not 2 or 245).
+                    6. Strings must be strings without changing their content.
+                    7. Output the parameters in the same order as the function definition.
+                    8. If a required parameter cannot be found, output MISSING.
+                    9. If there are multiple values of the same type, choose the ones that belong to the user's request.
+                    10. Output each parameter as parameter_name:value.
+                    11. Separate consecutive parameters with ",\n".
+                    12. Do not output anything except the extracted parameters.
+                    13. Strip surrounding quotes (single or double) from string values, keep the inner content exactly as written.
 
                     Examples
-
-                    Function:
-                    fn_add_numbers
-
-                    Parameters:
-                    a:number
-                    b:number
-
-                    User:
-                    What is the sum of 23 and 91?
-
-                    Output:
-                    a:23,
-                    b:91
-
-                    Function:
-                    fn_add_numbers
-
-                    Parameters:
-                    a:number
-                    b:number
-
-                    User:
-                    What is the sum of 2.45 and 3?
-
-                    Output:
-                    a:2.45,
-                    b:3
-
-                    Function:
-                    fn_add_numbers
-
-                    Parameters:
-                    a:number
-                    b:number
-
-                    User:
-                    What is the sum of 265 and 345?
-
-                    Output:
-                    a:265,
-                    b:345
 
                     Function:
                     fn_greet
@@ -269,30 +228,6 @@ class LLM(BaseModel):
 
                     Output:
                     s:world
-
-                    Function:
-                    fn_get_square_root
-
-                    Parameters:
-                    a:number
-
-                    User:
-                    Square root of 144
-
-                    Output:
-                    a:144
-
-                    Function:
-                    fn_get_square_root
-
-                    Parameters:
-                    a:number
-
-                    User:
-                    What is the square root of 16?
-
-                    Output:
-                    a:16
 
                     Function:
                     fn_substitute_string_with_regex
@@ -345,8 +280,108 @@ class LLM(BaseModel):
                     User:
                     {prompt}
 
-                    Output: a: 
+                    Output:
                     """
+            else :
+                param_prompt = f"""You are a parameter extraction model.
+
+                    Your only task is to extract the parameters for the selected function.
+
+                    Selected function:
+                    {data[n]["name"]}
+
+                    Required parameters:
+                    {data[n]["parameters"]}
+
+                    Rules:
+                    1. Extract ONLY the required parameters.
+                    2. Do NOT answer the user's question.
+                    3. Do NOT explain anything.
+                    4. Do NOT invent missing values.
+                    5. Keep the original value exactly as written whenever possible.
+                    6. Numbers must be numbers (integers or decimals).
+                    7. Output the parameters in the same order as the function definition.
+                    8. If a required parameter cannot be found, output MISSING.
+                    9. If there are multiple numbers in the user text, choose the ones that belong to the user's request, in the order they appear.
+                    10. Output each parameter as parameter_name:value.
+                    11. Separate consecutive parameters with ",\n".
+                    12. Do not output anything except the extracted parameters.
+                    13. Decimal numbers must keep their decimal point (e.g. 2.45, not 2 or 245).
+
+                    Examples
+
+                    Function:
+                    fn_add_numbers
+
+                    Parameters:
+                    a:number
+                    b:number
+
+                    User:
+                    What is the sum of 23 and 91?
+
+                    Output:
+                    a:23,
+                    b:91
+
+                    Function:
+                    fn_add_numbers
+
+                    Parameters:
+                    a:number
+                    b:number
+
+                    User:
+                    What is the sum of 2.45 and 3?
+
+                    Output:
+                    a:2.45,
+                    b:3
+
+                    Function:
+                    fn_add_numbers
+
+                    Parameters:
+                    a:number
+                    b:number
+
+                    User:
+                    What is the sum of 265 and 345?
+
+                    Output:
+                    a:265,
+                    b:345
+
+                    Function:
+                    fn_get_square_root
+
+                    Parameters:
+                    a:number
+
+                    User:
+                    Square root of 144
+
+                    Output:
+                    a:144
+
+                    Function:
+                    fn_get_square_root
+
+                    Parameters:
+                    a:number
+
+                    User:
+                    What is the square root of 16?
+
+                    Output:
+                    a:16
+
+                    User:
+                    {prompt}
+
+                    Output: 
+                    """
+
             strr = param_prompt
             buff = []
             buff = self.model.encode(param_prompt).squeeze().tolist()
@@ -361,16 +396,10 @@ class LLM(BaseModel):
             extracted = ""
             for p_name, p_info in parameter:
                 p_type = p_info["type"]
-                if p_name == "name":
-                    buff = self.model.encode(param_prompt).squeeze().tolist()
-                    logits = self.model.get_logits_from_input_ids(buff)
-                    logits = self.cons_param_str(logits)
-                    top5_idx = sorted(range(len(logits)), key=lambda i: logits[i], reverse=True)[:5]
-                    for idx in top5_idx:
-                        print(idx, repr(self.model.decode(idx)), logits[idx])
+                param_prompt += f"{p_name}:"          # show the correct label BEFORE generating
                 new = self.extractparam(param_prompt, p_type)
                 val = self.model.decode(new)
-                param_prompt += f"{val} {p_name}:"
+                param_prompt += f"{val} "
                 extracted += f"{p_name}:{val} "
             print(f"prompt: {extracted.strip()}")     
             # print(param_prompt[len(strr):])
