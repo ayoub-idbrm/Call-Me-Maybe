@@ -47,17 +47,11 @@ class LLM(BaseModel):
         return arr
 
     def cons_param_str(self, arr: list):
-        allowed_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ .,'\"!?-_"
-        numb = set()
-        for ch in allowed_chars:
-            ids = self.model.encode(ch).squeeze().tolist()
-            if isinstance(ids, int):
-                numb.add(ids)
-            else:
-                numb.update(ids)
-
+        allowed_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ .,'\"!?-_")
+        
         for i in range(len(arr)):
-            if i not in numb:
+            text = self.model.decode(i)
+            if not text or any (c not in allowed_chars for c in text):
                 arr[i] = -inf
         return arr
 
