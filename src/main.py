@@ -47,7 +47,11 @@ class LLM(BaseModel):
         return arr
 
     def cons_param_str(self, arr: list):
-        allowed_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ .,'\"!?-_")
+        allowed_chars = set(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "0123456789"
+        " .,'\"!?-_*+^$[]{}()|\\/:;=<>%&#@~`"
+    )
         
         for i in range(len(arr)):
             text = self.model.decode(i)
@@ -72,10 +76,7 @@ class LLM(BaseModel):
     def extractparam(self, prompt, param_type="number"):
             buff = self.model.encode(prompt).squeeze().tolist()
             leen = len(buff)
-            stop = self.model.encode(",").squeeze().tolist()
 
-            if isinstance(stop, list):
-                stop = stop[0]
 
             for _ in range(20):
                 logits = self.model.get_logits_from_input_ids(buff)
@@ -85,11 +86,14 @@ class LLM(BaseModel):
                 else:
                     logits = self.cons_param(logits)
 
-                token = argmax(logits)
-                buff.append(argmax(logits))
+                token = int(argmax(logits))
+                text = self.model.decode(token)
 
-                if token == stop:
+                if "," in text or "\n" in text:
                     break
+
+                buff.append(token)
+
             return buff[leen:]
 
     def processing(self,prompt_path, func_path):
@@ -253,7 +257,7 @@ class LLM(BaseModel):
                     Output:
                     source_string:Programming is fun,
                     regex:[aeiouAEIOU]+,
-                    replacement:asterisks
+                    replacement:*
 
                     Function:
                     fn_substitute_string_with_regex
@@ -388,13 +392,16 @@ class LLM(BaseModel):
 
             i = 0
             extracted = ""
-            for p_name, p_info in parameter:
+            for idx, (p_name, p_info) in enumerate(parameter):
                 p_type = p_info["type"]
-                param_prompt += f"{p_name}:"          # show the correct label BEFORE generating
+                param_prompt += f"{p_name}:"
                 new = self.extractparam(param_prompt, p_type)
-                val = self.model.decode(new)
-                param_prompt += f"{val} "
-                extracted += f"{p_name}:{val} "
+                val = self.model.decode(new).strip()
+                param_prompt += f"{val}"
+                if idx < len(parameter) - 1:
+                    param_prompt += ",\n"       # match the few-shot separator exactly
+                extracted += f"{p_name}:{val}" + (", " if idx < len(parameter) - 1 else "")
+
             print(f"prompt: {extracted.strip()}")     
             # print(param_prompt[len(strr):])
             
@@ -409,6 +416,7 @@ p = LLM()
 test = p.processing(prompt, func)
 end_time = time.process_time()
 cpu_time = end_time - start_time
-print(f"CPU time: {cpu_time} seconds")
+
+print(f"CPU time: {cpu_time / 60:.2f} minutes")
 # except BaseException as e:
 #     print("error",e)
