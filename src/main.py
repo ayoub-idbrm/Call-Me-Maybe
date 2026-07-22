@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from parsing import Parsing
 from numpy import array, argmax
 from math import inf
+import re
 import sys
 import time
 
@@ -31,7 +32,10 @@ class LLM(BaseModel):
         # return n
         return list(param["parameters"].items())
 
-
+    def extract_num_in_txt(self, text:str) -> list:
+        if isinstance(text, dict):
+            text = text.get("prompt", "")
+        return re.findall(r'-?\d+(?:\.\d+)?', str(text))
 
     def cons_dec(self, arr: list):
         numb = set()
@@ -60,15 +64,10 @@ class LLM(BaseModel):
         return arr
 
     def cons_param(self, arr: list):
-        numb = set()
-        for ch in "-0123456789,.":
-            ids = self.model.encode(ch).squeeze().tolist()
-            if isinstance(ids, int):
-                numb.add(ids)
-            else:
-                numb.update(ids)
+        allowed_chars = set("-0123456789.,")
         for i in range(len(arr)):
-            if i not in numb:
+            text = self.model.decode(i)
+            if not text or any(c not in allowed_chars for c in text):
                 arr[i] = -inf
         return arr
 
@@ -151,8 +150,16 @@ class LLM(BaseModel):
             parameter = self.set_param(data[n])
             is_str_func = parameter[0][1]["type"] == "string"
 
-            if is_str_func:
-                param_prompt = f"""You are a parameter extraction model.
+            if not is_str_func:
+                numbers = self.extract_num_in_txt(prompt)
+                extracted = ""
+                for idx, (p_name, p_info) in enumerate(parameter):
+                    val = numbers[idx] if idx < len(numbers) else "MISSING"
+                    extracted += f"{p_name}:{val}" + (", " if idx < len(parameter) - 1 else "")
+                print(f"prompt: {extracted.strip()}")
+                continue
+
+            param_prompt = f"""You are a parameter extraction model.
 
                     Your only task is to extract the parameters for the selected function.
 
@@ -280,105 +287,7 @@ class LLM(BaseModel):
 
                     Output:
                     """
-            else :
-                param_prompt = f"""You are a parameter extraction model.
 
-                    Your only task is to extract the parameters for the selected function.
-
-                    Selected function:
-                    {data[n]["name"]}
-
-                    Required parameters:
-                    {data[n]["parameters"]}
-
-                    Rules:
-                    1. Extract ONLY the required parameters.
-                    2. Do NOT answer the user's question.
-                    3. Do NOT explain anything.
-                    4. Do NOT invent missing values.
-                    5. Keep the original value exactly as written whenever possible.
-                    6. Numbers must be numbers (integers or decimals).
-                    7. Output the parameters in the same order as the function definition.
-                    8. If a required parameter cannot be found, output MISSING.
-                    9. If there are multiple numbers in the user text, choose the ones that belong to the user's request, in the order they appear.
-                    10. Output each parameter as parameter_name:value.
-                    11. Separate consecutive parameters with ",\n".
-                    12. Do not output anything except the extracted parameters.
-                    13. Decimal numbers must keep their decimal point (e.g. 2.45, not 2 or 245).
-
-                    Examples
-
-                    Function:
-                    fn_add_numbers
-
-                    Parameters:
-                    a:number
-                    b:number
-
-                    User:
-                    What is the sum of 23 and 91?
-
-                    Output:
-                    a:23,
-                    b:91
-
-                    Function:
-                    fn_add_numbers
-
-                    Parameters:
-                    a:number
-                    b:number
-
-                    User:
-                    What is the sum of 2.45 and 3?
-
-                    Output:
-                    a:2.45,
-                    b:3
-
-                    Function:
-                    fn_add_numbers
-
-                    Parameters:
-                    a:number
-                    b:number
-
-                    User:
-                    What is the sum of 265 and 345?
-
-                    Output:
-                    a:265,
-                    b:345
-
-                    Function:
-                    fn_get_square_root
-
-                    Parameters:
-                    a:number
-
-                    User:
-                    Square root of 144
-
-                    Output:
-                    a:144
-
-                    Function:
-                    fn_get_square_root
-
-                    Parameters:
-                    a:number
-
-                    User:
-                    What is the square root of 16?
-
-                    Output:
-                    a:16
-
-                    User:
-                    {prompt}
-
-                    Output: 
-                    """
 
             strr = param_prompt
             buff = []
@@ -391,12 +300,23 @@ class LLM(BaseModel):
             lenght_prom = len(param_prompt)
 
             i = 0
+            LEAK_MARKERS = ["Function:", "Parameters:", "Rules", "Examples", "User:", "Output:", "(with", " ("]
             extracted = ""
             for idx, (p_name, p_info) in enumerate(parameter):
                 p_type = p_info["type"]
                 param_prompt += f"{p_name}:"
                 new = self.extractparam(param_prompt, p_type)
                 val = self.model.decode(new).strip()
+
+                cut_points = [f"{n}:" for n, _ in parameter[idx+1:]] + LEAK_MARKERS
+                for marker in cut_points:
+                    if marker in val:
+                        val = val.split(marker)[0]
+                if "," in val:
+                    val = val.split(",")[0]
+                val = val.strip().rstrip(",").strip()
+
+
                 param_prompt += f"{val}"
                 if idx < len(parameter) - 1:
                     param_prompt += ",\n"       # match the few-shot separator exactly
