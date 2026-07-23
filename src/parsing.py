@@ -1,144 +1,99 @@
-from loader import load_prompt, load_funct
-from pydantic import BaseModel, Field
-from pathlib import Path
-import sys
 import json
 import re
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-# prompt = Path("data/input/function_calling_tests.json")
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-# func = load_funct()
+MAX_INT32 = 2147483647
 
 
-class Parsing(BaseModel):
+class PromptItem(BaseModel):
+    """One entry from function_calling_tests.json: {"prompt": "..."}"""
 
-    # def load_prompt():
-    #     with prompt.open('r', encoding='utf-8') as f:
-    #         return json.load(f)
+    # extra="forbid" replaces the old `len(prompt) == 1` check:
+    # any key other than "prompt" makes validation fail.
+    model_config = ConfigDict(extra="forbid")
+
+    prompt: str
+
+    @field_validator("prompt")
+    @classmethod
+    def numbers_must_fit_int32(cls, value: str) -> str:
+        for num in re.findall(r"\d+", value):
+            if int(num) > MAX_INT32:
+                raise ValueError(
+                    f"this number: {num} - is too big try small number"
+                )
+        return value
+
+
+class FunctionDef(BaseModel):
+    """One entry from functions_definition.json."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str
+    parameters: Dict[str, Dict[str, Any]]
+    returns: Dict[str, Any]
+    id: Optional[int] = None
+
+
+class Parsing:
 
     @staticmethod
-    def valid_prompt(path):
+    def _load_json_list(path: Path, label: str) -> list:
         with open(path) as f:
-            prompts = json.load(f)
+            data = json.load(f)
 
-        if not isinstance(prompts, list):
-            print("ERROR: you didn't load the prompts as a list")
-
-        if len(prompts) == 0:
-            print("ERROR: function_calling_tests.json file is empty")
+        if not isinstance(data, list):
+            print(f"ERROR: {label} did not load as a list")
             sys.exit(1)
-        for prompt in prompts:
-            # print(len(prompt))
-            if not isinstance(prompt, dict) :
-                print(f"ERROR: {prompt} is not a dict!")
-                sys.exit(1)
 
-            if not len(prompt) == 1:
-                print(f"ERROR: the dict is too loooong")
-                sys.exit(1)
+        if len(data) == 0:
+            print(f"ERROR: {label} file is empty")
+            sys.exit(1)
 
-            if "prompt" not in prompt.keys():
-                print(f"ERROR: there's a mistake in key here => {prompt}")
-                sys.exit(1)
+        return data
 
-            if not isinstance(prompt["prompt"], str):
-                print(f"ERROR: the dict {prompt.values()} should be str")
-                sys.exit(1)
+    @staticmethod
+    def valid_prompt(path) -> List[PromptItem]:
+        raw = Parsing._load_json_list(
+            Path(path),
+            "function_calling_tests.json",
+        )
 
-            numbers = re.findall(r"\d+", prompt["prompt"])
-            # print(numbers)
-            for num in numbers:
-                num = int(num)
-                if num > 2147483647:
-                    print(f"ERROR: this number: {num} - is too big try small number")
-                    sys.exit(1)
+        prompts: List[PromptItem] = []
+        for item in raw:
+            try:
+                prompts.append(PromptItem.model_validate(item))
+            except ValidationError as e:
+                print(f"ERROR: {item} is invalid -> {e}")
+                sys.exit(1)
 
         return prompts
 
+    @staticmethod
+    def valid_function_def(path) -> List[FunctionDef]:
+        raw = Parsing._load_json_list(Path(path), "functions_definition.json")
 
-    def valid_function_def(self, path):
-
-        with open(path, 'r') as z:
-            data = json.load(z)
-        
-        if not isinstance(data, list):
-            print("ERROR: data should be a list")
-            sys.exit(1)
-        
-        if len(data) == 0:
-            print("ERROR: the functions_definition.json file is empty")
-            sys.exit(1)
-        
-        for da in data:
-            if not isinstance(da, dict):
-                print(f"ERROR: {da} is not a dict")
+        functions: List[FunctionDef] = []
+        for item in raw:
+            try:
+                functions.append(FunctionDef.model_validate(item))
+            except ValidationError as e:
+                print(f"ERROR: {item} is invalid -> {e}")
                 sys.exit(1)
 
-            if "name" not in da.keys():
-                print(f"ERROR: there's no 'name' key here => {da}")
-                sys.exit(1)
+        return functions
 
-            if "description" not in da.keys():
-                print(f"ERROR: there's no 'description' key here => {da}")
-                sys.exit(1)
-
-            if "parameters" not in da.keys():
-                print(f"ERROR: there's no 'parameters' key here => {da}")
-                sys.exit(1)
-
-            if "returns" not in da.keys():
-                print(f"ERROR: there's no 'returns' key here => {da}")
-                sys.exit(1)
-
-            if not isinstance(da["name"], str):
-                print(f"ERROR: the name '{da["name"]}' \
-                    should be a str not {type(da["name"]).__name__}")
-                sys.exit(1)
-
-            if not isinstance(da["description"], str):
-                print(f"ERROR: in description: '{da["description"]}' \
-                    should be a str not {type(da["description"]).__name__}")
-                sys.exit(1)
-
-            if not isinstance(da["parameters"], dict):
-                print(f"ERROR: in {da} => the parameters key should \
-                    be a dict not '{type(da["parameters"]).__name__}")
-                sys.exit(1)
-
-            keys = [i for i in da["parameters"].keys()]
-            for i in list(keys):
-                if not isinstance(da["parameters"][str(i)], dict):
-                    print(f"ERROR: {da["parameters"][i]} \
-                        should be a dict not {type(da["parameters"][i])}")
-                    sys.exit(1)
-
-            if not isinstance(da["returns"], dict):
-                print(f"ERROR: the returns key should \
-                    be dict not '{type(da["returns"]).__name__}'")
-        return data
-
-
-
-    def set_id(self) -> list[dict]:
+    def set_id(self) -> List[FunctionDef]:
         path = Path("data/input/functions_definition.json")
-        data = self.valid_function_def(path)
+        functions = self.valid_function_def(path)
 
-        i = 0
-        for iteam in data:
-            iteam["id"] = i
-            i += 1
+        for i, func in enumerate(functions):
+            func.id = i
 
-        return data 
-
-
-
-
-
-
-
-# def main():
-#     test = Parsing()
-#     test.set_id()
-
-# if __name__ == "__main__":
-#     main()
+        return functions
