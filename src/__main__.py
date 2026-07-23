@@ -1,6 +1,7 @@
 try:
     from llm_sdk.llm_sdk import Small_LLM_Model
     from pathlib import Path
+    from typing import Any, Tuple
     from pydantic import BaseModel, ConfigDict
     from src.parsing import Parsing, PromptItem, FunctionDef
     from numpy import argmax
@@ -13,23 +14,21 @@ except BaseException as i:
     print(f"ERROR: {i}")
 
 
-
-
 class LLM(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     model: Small_LLM_Model = Small_LLM_Model()
 
-    def set_param(self, function_def: FunctionDef):
+    def set_param(self, function_def: FunctionDef) -> list[Tuple[str, Any]]:
         return list(function_def.parameters.items())
 
-    def extract_num_in_txt(self, text) -> list:
+    def extract_num_in_txt(self, text: object) -> list[str]:
         if isinstance(text, PromptItem):
             text = text.prompt
         elif isinstance(text, dict):
             text = text.get("prompt", "")
         return re.findall(r'-?\d+(?:\.\d+)?', str(text))
 
-    def cons_dec(self, arr: list):
+    def cons_dec(self, arr: list[float]) -> list[float]:
         numb = set()
         for ch in "-0123456789":
             ids = self.model.encode(ch).squeeze().tolist()
@@ -42,7 +41,7 @@ class LLM(BaseModel):
                 arr[i] = -inf
         return arr
 
-    def cons_param_str(self, arr: list):
+    def cons_param_str(self, arr: list[float]) -> list[float]:
         allowed_chars = set(
             "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
             "0123456789"
@@ -55,7 +54,7 @@ class LLM(BaseModel):
                 arr[i] = -inf
         return arr
 
-    def cons_param(self, arr: list):
+    def cons_param(self, arr: list[float]) -> list[float]:
         allowed_chars = set("-0123456789.,")
         for i in range(len(arr)):
             text = self.model.decode(i)
@@ -63,7 +62,9 @@ class LLM(BaseModel):
                 arr[i] = -inf
         return arr
 
-    def extractparam(self, prompt, param_type="number"):
+    def extractparam(
+        self, prompt: str, param_type: str = "number"
+    ) -> list[int]:
         buff = self.model.encode(prompt).squeeze().tolist()
         leen = len(buff)
 
@@ -83,9 +84,11 @@ class LLM(BaseModel):
 
             buff.append(token)
 
-        return buff[leen:]
+        return list(buff[leen:])
 
-    def processing(self, prompt_path, func_path):
+    def processing(
+        self, prompt_path: Path, func_path: Path
+    ) -> list[dict[str, Any]]:
         prompt_items = Parsing.valid_prompt(prompt_path)
         pars = Parsing()
         data = pars.set_id()
@@ -128,32 +131,34 @@ class LLM(BaseModel):
 
             logits = self.model.get_logits_from_input_ids(buffer)
             logits = self.cons_dec(logits)
-            n = argmax(logits)
-            buffer.append(n)
+            token_id = int(argmax(logits))
+            buffer.append(token_id)
 
             try:
-                n = int(self.model.decode(n))
+                func_id = int(self.model.decode(token_id))
             except BaseException:
                 print("function not found")
                 sys.exit(1)
 
-            if n < 0 or n >= len(data):
+            if func_id < 0 or func_id >= len(data):
                 print("no matching function found")
                 continue
 
-            parameter = self.set_param(data[n])
-            is_str_func = parameter[0][1].type == "string" if parameter else False
+            parameter = self.set_param(data[func_id])
+            is_str_func = (
+                parameter[0][1].type == "string" if parameter else False)
 
             if not is_str_func:
                 numbers = self.extract_num_in_txt(prompt)
-                params_dict = {}
+                params_dict_num = {}
                 for idx, (p_name, p_info) in enumerate(parameter):
-                    val = float(numbers[idx]) if idx < len(numbers) else None
-                    params_dict[p_name] = val
+                    num_val: float | None = float(numbers[idx]) \
+                        if idx < len(numbers) else None
+                    params_dict_num[p_name] = num_val
                 results.append({
                     "prompt": prompt,
-                    "name": data[n].name,
-                    "parameters": params_dict
+                    "name": data[func_id].name,
+                    "parameters": params_dict_num
                 })
                 continue
 
@@ -163,10 +168,10 @@ class LLM(BaseModel):
                         parameters for the selected function.
 
                     Selected function:
-                    {data[n].name}
+                    {data[func_id].name}
 
                     Required parameters:
-                    {data[n].parameters}
+                    {data[func_id].parameters}
 
                     Rules:
                     1. Extract ONLY the required parameters.
@@ -306,40 +311,42 @@ class LLM(BaseModel):
                 " (",
             ]
             extracted = ""
-            params_dict = {}
+            params_dict_str = {}
             for idx, (p_name, p_info) in enumerate(parameter):
                 p_type = p_info.type
                 param_prompt += f"{p_name}:"
                 new = self.extractparam(param_prompt, p_type)
-                val = self.model.decode(new).strip()
+                str_val: str = self.model.decode(new).strip()
 
                 cut_points = [
                     f"{n2}:" for n2, _ in parameter[idx + 1:]
                 ] + LEAK_MARKERS
                 for marker in cut_points:
-                    if marker in val:
-                        val = val.split(marker)[0]
-                if "," in val:
-                    val = val.split(",")[0]
-                val = val.strip().rstrip(",").strip()
+                    if marker in str_val:
+                        str_val = str_val.split(marker)[0]
+                if "," in str_val:
+                    str_val = str_val.split(",")[0]
+                str_val = str_val.strip().rstrip(",").strip()
 
-                param_prompt += f"{val}"
+                param_prompt += f"{str_val}"
                 if idx < len(parameter) - 1:
                     param_prompt += ",\n"
-                params_dict[p_name] = val
-                extracted += f"{p_name}:{val}" + \
+                params_dict_str[p_name] = str_val
+                extracted += f"{p_name}:{str_val}" + \
                     (", " if idx < len(parameter) - 1 else "")
 
             results.append({
                 "prompt": prompt,
-                "name": data[n].name,
-                "parameters": params_dict
+                "name": data[func_id].name,
+                "parameters": params_dict_str
             })
 
             self.generate_output_file(results)
         return results
 
-    def generate_output_file(self, results):
+    def generate_output_file(
+        self, results: list[dict[str, Any]]
+    ) -> None:
         BASE_DIR = Path(__file__).resolve().parent.parent
         output_path = \
             BASE_DIR / "data" / "output" / "function_calling_results.json"
@@ -348,7 +355,7 @@ class LLM(BaseModel):
             json.dump(results, f, indent=2)
 
 
-def main():
+def main() -> None:
     try:
         p = LLM()
         start_time = time.perf_counter()

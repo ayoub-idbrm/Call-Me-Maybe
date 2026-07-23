@@ -11,6 +11,7 @@ MAX_INT32 = 2147483647
 
 allowed = Literal["string", "boolean", "number", "integer"]
 
+
 class PromptItem(BaseModel):
     """One entry from function_calling_tests.json: {"prompt": "..."}"""
 
@@ -32,8 +33,8 @@ class PromptItem(BaseModel):
 
 
 class Return(BaseModel):
-     model_config = ConfigDict(extra="forbid")
-     type: allowed
+    model_config = ConfigDict(extra="forbid")
+    type: allowed
 
 
 class ParamDef(BaseModel):
@@ -56,7 +57,7 @@ class FunctionDef(BaseModel):
 class Parsing:
 
     @staticmethod
-    def _load_json_list(path: Path, label: str) -> list:
+    def _load_json_list(path: Path, label: str) -> List[Any]:
         with open(path) as f:
             data = json.load(f)
 
@@ -71,7 +72,7 @@ class Parsing:
         return data
 
     @staticmethod
-    def valid_prompt(path) -> List[PromptItem]:
+    def valid_prompt(path: Path) -> List[PromptItem]:
         raw = Parsing._load_json_list(
             Path(path),
             "function_calling_tests.json",
@@ -88,7 +89,7 @@ class Parsing:
         return prompts
 
     @staticmethod
-    def valid_function_def(path) -> List[FunctionDef]:
+    def valid_function_def(path: Path) -> List[FunctionDef]:
         raw = Parsing._load_json_list(Path(path), "functions_definition.json")
 
         functions: List[FunctionDef] = []
