@@ -2,12 +2,14 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 MAX_INT32 = 2147483647
 
+
+allowed = Literal["string", "boolean", "number", "integer"]
 
 class PromptItem(BaseModel):
     """One entry from function_calling_tests.json: {"prompt": "..."}"""
@@ -29,6 +31,16 @@ class PromptItem(BaseModel):
         return value
 
 
+class Return(BaseModel):
+     model_config = ConfigDict(extra="forbid")
+     type: allowed
+
+
+class ParamDef(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: allowed
+
+
 class FunctionDef(BaseModel):
     """One entry from functions_definition.json."""
 
@@ -36,8 +48,8 @@ class FunctionDef(BaseModel):
 
     name: str
     description: str
-    parameters: Dict[str, Dict[str, Any]]
-    returns: Dict[str, Any]
+    parameters: Dict[str, ParamDef]
+    returns: Return
     id: Optional[int] = None
 
 

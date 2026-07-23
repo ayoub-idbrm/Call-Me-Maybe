@@ -1,19 +1,18 @@
-from llm_sdk.llm_sdk import Small_LLM_Model
-from pathlib import Path
-from pydantic import BaseModel, ConfigDict
-from parsing import Parsing, PromptItem, FunctionDef
-from numpy import argmax
-from math import inf
-import json
-import re
-import sys
-import time
+try:
+    from llm_sdk.llm_sdk import Small_LLM_Model
+    from pathlib import Path
+    from pydantic import BaseModel, ConfigDict
+    from src.parsing import Parsing, PromptItem, FunctionDef
+    from numpy import argmax
+    from math import inf
+    import json
+    import re
+    import sys
+    import time
+except BaseException as i:
+    print(f"ERROR: {i}")
 
-start_time = time.perf_counter()
 
-
-prompt = Path("data/input/function_calling_tests.json")
-func = Path("data/input/functions_definition.json")
 
 
 class LLM(BaseModel):
@@ -119,7 +118,8 @@ class LLM(BaseModel):
         )
         enc_gen = self.model.encode(general_prompt).squeeze().tolist()
 
-        for prompt_item in prompt_items:
+        for index, prompt_item in enumerate(prompt_items):
+            print(f"processing: {index}/11")
             prompt = prompt_item.prompt
 
             buffer = list(enc_gen)
@@ -142,7 +142,7 @@ class LLM(BaseModel):
                 continue
 
             parameter = self.set_param(data[n])
-            is_str_func = parameter[0][1]["type"] == "string"
+            is_str_func = parameter[0][1].type == "string" if parameter else False
 
             if not is_str_func:
                 numbers = self.extract_num_in_txt(prompt)
@@ -308,7 +308,7 @@ class LLM(BaseModel):
             extracted = ""
             params_dict = {}
             for idx, (p_name, p_info) in enumerate(parameter):
-                p_type = p_info["type"]
+                p_type = p_info.type
                 param_prompt += f"{p_name}:"
                 new = self.extractparam(param_prompt, p_type)
                 val = self.model.decode(new).strip()
@@ -348,11 +348,23 @@ class LLM(BaseModel):
             json.dump(results, f, indent=2)
 
 
-p = LLM()
-p.processing(prompt, func)
-end_time = time.perf_counter()
+def main():
+    try:
+        p = LLM()
+        start_time = time.perf_counter()
+        prompt = Path("data/input/function_calling_tests.json")
+        func = Path("data/input/functions_definition.json")
+        print("=== model loaded ===")
+        p.processing(prompt, func)
+        end_time = time.perf_counter()
 
-elapsed = end_time - start_time
+        elapsed = end_time - start_time
 
-print(f"Execution time: {elapsed:.6f} seconds")
-print(f"Execution time: {elapsed / 60:.2f} minutes")
+        print(f"Execution time: {elapsed / 60:.2f} minutes")
+
+    except BaseException as f:
+        print(f"ERROR: {f}")
+
+
+if __name__ == "__main__":
+    main()

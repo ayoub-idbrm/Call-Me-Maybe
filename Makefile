@@ -7,7 +7,7 @@ install:
 
 # Run the main script
 run:
-	python3 src/main.py
+	uv run python -m src
 
 # Run the main script under pdb (Python's built-in debugger)
 debug:
